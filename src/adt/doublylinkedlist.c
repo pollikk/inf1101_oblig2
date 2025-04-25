@@ -15,12 +15,12 @@
 #include "list.h"
 
 
-typedef struct lnode lnode_t;
-struct lnode {
-    lnode_t *right;
-    lnode_t *left;
-    void *item;
-};
+// typedef struct lnode lnode_t;
+// struct lnode {
+//     lnode_t *right;
+//     lnode_t *left;
+//     void *item;
+// };
 
 struct list {
     lnode_t *leftmost;
@@ -29,10 +29,10 @@ struct list {
     cmp_fn cmpfn;
 };
 
-struct list_iter {
-    list_t *list;
-    lnode_t *node;
-};
+// struct list_iter {
+//     list_t *list;
+//     lnode_t *node;
+// };
 
 
 static lnode_t *newnode(void *item) {

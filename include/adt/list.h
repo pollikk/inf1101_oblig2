@@ -16,6 +16,18 @@
  */
 typedef struct list list_t;
 
+typedef struct lnode lnode_t;
+struct lnode {
+    lnode_t *right;
+    lnode_t *left;
+    void *item;
+};
+
+struct list_iter {
+    list_t *list;
+    lnode_t *node;
+};
+
 /**
  * @brief Create a new, empty list that uses the given comparison function
  * to compare list items in relevant functions (e.g. `list_contains`).
