@@ -112,8 +112,6 @@ int index_document(index_t *index, char *doc_name, list_t *terms)
      * Note: doc_name and the list of terms is now owned by the index. See the docstring.
      *
      */
-    UNUSED(index);
-    UNUSED(doc_name);
     list_iter_t *iterator = list_createiter(terms);
     if (iterator == NULL)
     {
@@ -122,12 +120,14 @@ int index_document(index_t *index, char *doc_name, list_t *terms)
 
     while (list_hasnext(iterator))
     {
-        char *term = NULL;
-        if (iterator->node != NULL)
+        char *term = (char *)list_next(iterator);
+        list_t *document_list = NULL;
+        if (index == NULL || index->map == NULL)
         {
-            term = iterator->node->item;
+            // document_list = (list_t *)map_get(index->map, term);
+            pr_error("index or index->map is NULL!\n");
+            return -1;
         }
-        list_t *document_list = (list_t *)map_get(index->map, term);
         if (document_list == NULL)
         {
             document_list = list_create((cmp_fn)strcmp);
@@ -138,32 +138,29 @@ int index_document(index_t *index, char *doc_name, list_t *terms)
             }
             map_insert(index->map, term, document_list);
             index->amount_of_terms++;
+            // pr_info("amount of terms = %zu", index->amount_of_terms);
             // pr_info("amount of terms = %zu \n", index->amount_of_terms);
         }
         list_iter_t *document_iterator = list_createiter(document_list);
-        if (document_iterator == NULL) {
-            pr_error("Failed to create iterator for document list\n");
-            return -1;
-        }        int document_exists = 0;
-        while(list_hasnext(document_iterator)){
-            char *existst = (char*) list_next(document_iterator);
-            if(strcmp(existst,doc_name) == 0){
+        int document_exists = 0;
+        while (list_hasnext(document_iterator))
+        {
+            char *exists = (char *)list_next(document_iterator);
+            if (strcmp(exists, doc_name) == 0)
+            {
                 document_exists = 1;
                 break;
             }
         }
-        
-        if(document_exists == 0){
+        if (document_exists == 0)
+        {
             list_addlast(document_list, doc_name);
         }
-
-        list_next(iterator);
-        // pr_info("current item: %s\n", term);
     }
 
     index->amount_of_docs++;
-    pr_info("amount of docs = %zu \n", index->amount_of_docs);
-    return 0; // or -x on error
+    // pr_info("amount of docs = %zu \n", index->amount_of_docs);
+    return 0;
 }
 
 list_t *index_query(index_t *index, list_t *query_tokens, char *errmsg)
@@ -179,6 +176,32 @@ list_t *index_query(index_t *index, list_t *query_tokens, char *errmsg)
      * would do with a typical `printf`. `snprintf` does not print anything, rather writing your message to
      * the buffer.
      */
+
+// hvis index eller query_tokens er NULL:
+//     skriv feilmelding
+//     returner NULL
+
+// lag en tom map: dokumentnavn -> score
+
+// for hvert token i query_tokens:
+//     hent listen av dokumenter som inneholder token fra index->map
+//     for hvert dokument i listen:
+//         hvis dokumentet allerede finnes i score_map:
+//             øk score med 1
+//         ellers:
+//             legg inn dokumentet i score_map med score = 1
+
+// lag en tom resultat-liste
+
+// for hver entry i score_map:
+//     lag en query_result_t med dokumentnavn og score
+//     legg til i resultatlisten
+
+// sorter resultatlisten på score synkende
+
+// returner resultatlisten
+
+
     (void)index;
     (void)errmsg;
     (void)query_tokens;
