@@ -13,7 +13,7 @@ RELEASE_BIN="build/release/indexer"
 
 # run the debug executable with these arguments.
 # include .txt / .md files from 'data/enwiki/', limit to n=100 files
-DEBUG_ARGS="data/enwiki/ --type txt md --limit 100"
+DEBUG_ARGS="data/enwiki/ --type txt md --limit 2"
 
 # include all .txt and .md files from 'data/enwiki/', limit to n=100000 files
 RELEASE_ARGS="data/enwiki/ --type txt md --limit 100000"
