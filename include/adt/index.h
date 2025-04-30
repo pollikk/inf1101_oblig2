@@ -16,6 +16,14 @@
  */
 typedef struct index index_t;
 
+typedef enum
+{
+    TERM,
+    AND,
+    OR,
+    NOT
+} ast_enums_t;
+
 /**
  * Type of query_result produced by a index query.
  * Higher score implies the document is more relevant.

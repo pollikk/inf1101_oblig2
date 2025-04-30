@@ -1,14 +1,10 @@
-/**
- * @implements index.h
- */
 
-/* set log level for prints in this file */
 #define LOG_LEVEL LOG_LEVEL_DEBUG
 
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <limits.h> // for LINE_MAX
+#include <limits.h> 
 
 #include "printing.h"
 #include "index.h"
@@ -18,31 +14,16 @@
 #include "map.h"
 #include "set.h"
 
-typedef struct
-{
-    char *doc_name;
-    size_t count;
-} doc_entry_t;
-
 struct index
 {
     map_t *map;
     size_t amount_of_docs;
     size_t amount_of_terms;
 };
-int variable = 0;
-
-typedef enum
-{
-    TERM,
-    AND,
-    OR,
-    NOT
-} ast_struct_t;
 
 typedef struct ast_node
 {
-    ast_struct_t type;
+    ast_enums_t type;
     struct ast_node *left;
     struct ast_node *right;
     char *term;
@@ -55,31 +36,15 @@ typedef struct read
     char *current;
 } read_t;
 
-static ast_node_t *handle_query(read_t *reader);
-static ast_node_t *handle_and_term(read_t *reader);
-static ast_node_t *handle_or_term(read_t *reader);
-static ast_node_t *handle_term(read_t *reader);
-
 ast_node_t *ast_create_term(char *term)
 {
     ast_node_t *node = malloc(sizeof(ast_node_t));
     node->type = TERM;
-    node->term = strdup(term);
-    node->left = node->right = NULL;
+    node->term = term;
     return node;
 }
 
-ast_node_t *ast_create_unary(ast_struct_t type, ast_node_t *right)
-{
-    ast_node_t *node = malloc(sizeof(ast_node_t));
-    node->type = type;
-    node->term = NULL;
-    node->left = NULL;
-    node->right = right;
-    return node;
-}
-
-ast_node_t *ast_create_binary(ast_struct_t type, ast_node_t *left, ast_node_t *right)
+ast_node_t *ast_create(ast_enums_t type, ast_node_t *left, ast_node_t *right)
 {
     ast_node_t *node = malloc(sizeof(ast_node_t));
     node->type = type;
@@ -89,21 +54,8 @@ ast_node_t *ast_create_binary(ast_struct_t type, ast_node_t *left, ast_node_t *r
     return node;
 }
 
-void ast_destroy(ast_node_t *node)
-{
-    if (!node)
-        return;
-    if (node->term)
-        free(node->term);
-    ast_destroy(node->left);
-    ast_destroy(node->right);
-    free(node);
-}
 
-read_t *reader_create(list_t *tokens);
-
-
-static void reader_advance(read_t *reader)
+void reader_iterate(read_t *reader)
 {
     if (list_hasnext(reader->iter))
     {
@@ -121,73 +73,71 @@ read_t *reader_create(list_t *tokens)
     reader->tokens = tokens;
     reader->iter = list_createiter(tokens);
     reader->current = NULL;
-    reader_advance(reader);
+    // reader_iterate(reader);
+    reader->current = list_next(reader->iter);
     return reader;
 }
 
-void reader_destroy(read_t *reader)
+
+// ast_node_t *handle_query(read_t *reader);
+ast_node_t *handle_and_term(read_t *reader);
+ast_node_t *handle_or_term(read_t *reader);
+ast_node_t *handle_term(read_t *reader);
+
+ast_node_t *handle_query(read_t *reader)
 {
-    if (reader)
-    {
-        list_destroyiter(reader->iter);
-        free(reader);
-    }
+    ast_node_t *left_side = handle_and_term(reader);
+if (reader->current && strcmp(reader->current, "&!") == 0)
+{
+    reader_iterate(reader);
+    ast_node_t *right_side = handle_query(reader);
+    return ast_create(NOT, left_side, right_side);
+}
+    return left_side;
 }
 
-static ast_node_t *handle_query(read_t *reader)
-{
-    ast_node_t *left = handle_and_term(reader);
-    if (reader->current && strcmp(reader->current, "!&") == 0)
-    {
-        reader_advance(reader);
-        ast_node_t *right = handle_query(reader);
-        return ast_create_unary(NOT, ast_create_binary(AND, left, right));
-    }
-    return left;
-}
-
-static ast_node_t *handle_and_term(read_t *reader)
+ast_node_t *handle_and_term(read_t *reader)
 {
     ast_node_t *left = handle_or_term(reader);
     while (reader->current && strcmp(reader->current, "&&") == 0)
     {
-        reader_advance(reader);
+        reader_iterate(reader);
         ast_node_t *right = handle_or_term(reader);
-        left = ast_create_binary(AND, left, right);
+        left = ast_create(AND, left, right);
     }
     return left;
 }
 
-static ast_node_t *handle_or_term(read_t *reader)
+ast_node_t *handle_or_term(read_t *reader)
 {
     ast_node_t *left = handle_term(reader);
     while (reader->current && strcmp(reader->current, "||") == 0)
     {
-        reader_advance(reader);
+        reader_iterate(reader);
         ast_node_t *right = handle_term(reader);
-        left = ast_create_binary(OR, left, right);
+        left = ast_create(OR, left, right);
     }
     return left;
 }
 
-static ast_node_t *handle_term(read_t *reader)
+ast_node_t *handle_term(read_t *reader)
 {
     if (reader->current && strcmp(reader->current, "(") == 0)
     {
-        reader_advance(reader); // skip '('
+        reader_iterate(reader);
         ast_node_t *node = handle_query(reader);
         if (!reader->current || strcmp(reader->current, ")") != 0)
         {
             // handle error
             return NULL;
         }
-        reader_advance(reader); // skip ')'
+        reader_iterate(reader); 
         return node;
     }
     else if (reader->current)
     {
         char *word = strdup(reader->current);
-        reader_advance(reader);
+        reader_iterate(reader);
         return ast_create_term(word);
     }
     return NULL;
@@ -195,9 +145,6 @@ static ast_node_t *handle_term(read_t *reader)
 
 set_t *evaluate_ast(index_t *index, ast_node_t *node, map_t *score_map)
 {
-    if (node == NULL)
-        return NULL;
-
     if (node->type == TERM)
     {
         entry_t *entry = map_get(index->map, node->term);
@@ -209,7 +156,7 @@ set_t *evaluate_ast(index_t *index, ast_node_t *node, map_t *score_map)
         list_iter_t *iter = list_createiter(doc_list);
         while (list_hasnext(iter))
         {
-            doc_entry_t *doc = list_next(iter);
+            query_result_t *doc = list_next(iter);
             set_insert(docs, doc->doc_name);
 
             if (score_map)
@@ -218,12 +165,12 @@ set_t *evaluate_ast(index_t *index, ast_node_t *node, map_t *score_map)
                 if (score_entry)
                 {
                     double *score = (double *)score_entry->val;
-                    *score += doc->count;
+                    *score += doc->score;
                 }
                 else
                 {
                     double *new_score = malloc(sizeof(double));
-                    *new_score = doc->count;
+                    *new_score = doc->score;
                     map_insert(score_map, strdup(doc->doc_name), new_score);
                 }
             }
@@ -283,7 +230,7 @@ int compare_results_by_score(query_result_t *a, query_result_t *b)
  * Remove this function from your finished program once you are done
  */
 ATTR_MAYBE_UNUSED
-static void print_list_of_strings(const char *descr, list_t *tokens)
+void print_list_of_strings(const char *descr, list_t *tokens)
 {
     if (LOG_LEVEL <= LOG_LEVEL_INFO)
     {
@@ -380,10 +327,10 @@ int index_document(index_t *index, char *doc_name, list_t *terms)
         }
 
         list_iter_t *doc_iter = list_createiter(doc_list);
-        doc_entry_t *found = NULL;
+        query_result_t *found = NULL;
         while (list_hasnext(doc_iter))
         {
-            doc_entry_t *doc = (doc_entry_t *)list_next(doc_iter);
+            query_result_t *doc = (query_result_t *)list_next(doc_iter);
             if (strcmp(doc->doc_name, doc_name) == 0)
             {
                 found = doc;
@@ -394,13 +341,13 @@ int index_document(index_t *index, char *doc_name, list_t *terms)
 
         if (found)
         {
-            found->count++;
+            found->score++;
         }
         else
         {
-            doc_entry_t *new_doc = malloc(sizeof(doc_entry_t));
+            query_result_t *new_doc = malloc(sizeof(query_result_t));
             new_doc->doc_name = strdup(doc_name);
-            new_doc->count = 1;
+            new_doc->score = 1;
             list_addlast(doc_list, new_doc);
         }
     }
@@ -412,8 +359,6 @@ int index_document(index_t *index, char *doc_name, list_t *terms)
 
 list_t *index_query(index_t *index, list_t *query_tokens, char *errbuf)
 {
-    printf("Starting index_query...\n");
-    print_list_of_strings("Query tokens", query_tokens);
 
     read_t *reader = reader_create(query_tokens);
     if (!reader)
@@ -423,17 +368,14 @@ list_t *index_query(index_t *index, list_t *query_tokens, char *errbuf)
     }
 
     ast_node_t *ast = handle_query(reader);
-    reader_destroy(reader);
 
-    if (!ast)
+    if (ast == NULL)
     {
         snprintf(errbuf, LINE_MAX, "Invalid query");
         return NULL;
     }
 
-    // Get set of matching documents only
     set_t *result_docs = evaluate_ast(index, ast, NULL);
-    ast_destroy(ast);
 
     if (!result_docs)
     {
@@ -463,7 +405,7 @@ list_t *index_query(index_t *index, list_t *query_tokens, char *errbuf)
         list_iter_t *doc_iter = list_createiter(docs);
         while (list_hasnext(doc_iter))
         {
-            doc_entry_t *doc = list_next(doc_iter);
+            query_result_t *doc = list_next(doc_iter);
             if (!set_get(result_docs, doc->doc_name))
                 continue; // only score matching docs
 
@@ -471,12 +413,12 @@ list_t *index_query(index_t *index, list_t *query_tokens, char *errbuf)
             if (score_entry)
             {
                 double *score = (double *)score_entry->val;
-                *score += doc->count;
+                *score += doc->score;
             }
             else
             {
                 double *new_score = malloc(sizeof(double));
-                *new_score = doc->count;
+                *new_score = doc->score;
                 map_insert(score_map, strdup(doc->doc_name), new_score);
             }
         }
@@ -485,7 +427,6 @@ list_t *index_query(index_t *index, list_t *query_tokens, char *errbuf)
     list_destroyiter(query_iter);
     set_destroy(result_docs, NULL);
 
-    // Build final results list
     list_t *results = list_create(NULL);
     if (!results)
     {
@@ -513,7 +454,7 @@ list_t *index_query(index_t *index, list_t *query_tokens, char *errbuf)
 }
 void index_stat(index_t *index, size_t *n_docs, size_t *n_terms)
 {
-    if (!index || !n_docs || !n_terms)
+    if (index == NULL || n_docs == NULL || n_terms == NULL)
     {
         return;
     }
