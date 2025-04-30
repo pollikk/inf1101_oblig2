@@ -1,14 +1,10 @@
-/**
- * @implements index.h
- */
 
-/* set log level for prints in this file */
 #define LOG_LEVEL LOG_LEVEL_DEBUG
 
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <limits.h> // for LINE_MAX
+#include <limits.h> 
 
 #include "printing.h"
 #include "index.h"
@@ -30,7 +26,6 @@ struct index
     size_t amount_of_docs;
     size_t amount_of_terms;
 };
-int variable = 0;
 
 typedef enum
 {
@@ -38,15 +33,15 @@ typedef enum
     AND,
     OR,
     NOT
-} ast_struct_t;
+} ast_enums_t;
 
-typedef struct ast_node
+typedef struct anode
 {
-    ast_struct_t type;
-    struct ast_node *left;
-    struct ast_node *right;
+    ast_enums_t type;
+    struct anode *left;
+    struct anode *right;
     char *term;
-} ast_node_t;
+} anode_t;
 
 typedef struct read
 {
@@ -55,33 +50,24 @@ typedef struct read
     char *current;
 } read_t;
 
-static ast_node_t *handle_query(read_t *reader);
-static ast_node_t *handle_and_term(read_t *reader);
-static ast_node_t *handle_or_term(read_t *reader);
-static ast_node_t *handle_term(read_t *reader);
+static anode_t *handle_query(read_t *reader);
+static anode_t *handle_and_term(read_t *reader);
+static anode_t *handle_or_term(read_t *reader);
+static anode_t *handle_term(read_t *reader);
 
-ast_node_t *ast_create_term(char *term)
+anode_t *ast_create_term(char *term)
 {
-    ast_node_t *node = malloc(sizeof(ast_node_t));
+    anode_t *node = malloc(sizeof(anode_t));
     node->type = TERM;
-    node->term = strdup(term);
+    node->term = term;
     node->left = node->right = NULL;
     return node;
 }
 
-ast_node_t *ast_create_unary(ast_struct_t type, ast_node_t *right)
-{
-    ast_node_t *node = malloc(sizeof(ast_node_t));
-    node->type = type;
-    node->term = NULL;
-    node->left = NULL;
-    node->right = right;
-    return node;
-}
 
-ast_node_t *ast_create_binary(ast_struct_t type, ast_node_t *left, ast_node_t *right)
+anode_t *ast_create(ast_enums_t type, anode_t *left, anode_t *right)
 {
-    ast_node_t *node = malloc(sizeof(ast_node_t));
+    anode_t *node = malloc(sizeof(anode_t));
     node->type = type;
     node->term = NULL;
     node->left = left;
@@ -89,7 +75,7 @@ ast_node_t *ast_create_binary(ast_struct_t type, ast_node_t *left, ast_node_t *r
     return node;
 }
 
-void ast_destroy(ast_node_t *node)
+void ast_destroy(anode_t *node)
 {
     if (!node)
         return;
@@ -100,10 +86,10 @@ void ast_destroy(ast_node_t *node)
     free(node);
 }
 
-read_t *reader_create(list_t *tokens);
+// read_t *reader_create(list_t *tokens);
 
 
-static void reader_advance(read_t *reader)
+static void reader_iterate(read_t *reader)
 {
     if (list_hasnext(reader->iter))
     {
@@ -121,7 +107,8 @@ read_t *reader_create(list_t *tokens)
     reader->tokens = tokens;
     reader->iter = list_createiter(tokens);
     reader->current = NULL;
-    reader_advance(reader);
+    // reader_iterate(reader);
+    reader->current = list_next(reader->iter);
     return reader;
 }
 
@@ -134,66 +121,71 @@ void reader_destroy(read_t *reader)
     }
 }
 
-static ast_node_t *handle_query(read_t *reader)
+static anode_t *handle_query(read_t *reader)
 {
-    ast_node_t *left = handle_and_term(reader);
-    if (reader->current && strcmp(reader->current, "!&") == 0)
-    {
-        reader_advance(reader);
-        ast_node_t *right = handle_query(reader);
-        return ast_create_unary(NOT, ast_create_binary(AND, left, right));
-    }
-    return left;
+    anode_t *left_side = handle_and_term(reader);
+
+    // pr_info("reader current inside query handle= %s", reader->current);
+if (reader->current && strcmp(reader->current, "&!") == 0)
+{
+    // pr_info("Parsing AND NOT\n");
+    reader_iterate(reader);
+    anode_t *right_side = handle_query(reader);
+    return ast_create(NOT, left_side, right_side);
 }
 
-static ast_node_t *handle_and_term(read_t *reader)
+    return left_side;
+}
+
+static anode_t *handle_and_term(read_t *reader)
 {
-    ast_node_t *left = handle_or_term(reader);
+    anode_t *left = handle_or_term(reader);
+    // pr_info("reader current inside and term handle= %s", reader->current);
     while (reader->current && strcmp(reader->current, "&&") == 0)
     {
-        reader_advance(reader);
-        ast_node_t *right = handle_or_term(reader);
-        left = ast_create_binary(AND, left, right);
+        reader_iterate(reader);
+        anode_t *right = handle_or_term(reader);
+        left = ast_create(AND, left, right);
     }
     return left;
 }
 
-static ast_node_t *handle_or_term(read_t *reader)
+static anode_t *handle_or_term(read_t *reader)
 {
-    ast_node_t *left = handle_term(reader);
+    anode_t *left = handle_term(reader);
     while (reader->current && strcmp(reader->current, "||") == 0)
     {
-        reader_advance(reader);
-        ast_node_t *right = handle_term(reader);
-        left = ast_create_binary(OR, left, right);
+        reader_iterate(reader);
+        anode_t *right = handle_term(reader);
+        left = ast_create(OR, left, right);
     }
     return left;
 }
 
-static ast_node_t *handle_term(read_t *reader)
+static anode_t *handle_term(read_t *reader)
 {
     if (reader->current && strcmp(reader->current, "(") == 0)
     {
-        reader_advance(reader); // skip '('
-        ast_node_t *node = handle_query(reader);
+        reader_iterate(reader); // skip '('
+        anode_t *node = handle_query(reader);
         if (!reader->current || strcmp(reader->current, ")") != 0)
         {
             // handle error
             return NULL;
         }
-        reader_advance(reader); // skip ')'
+        reader_iterate(reader); // skip ')'
         return node;
     }
     else if (reader->current)
     {
         char *word = strdup(reader->current);
-        reader_advance(reader);
+        reader_iterate(reader);
         return ast_create_term(word);
     }
     return NULL;
 }
 
-set_t *evaluate_ast(index_t *index, ast_node_t *node, map_t *score_map)
+set_t *evaluate_ast(index_t *index, anode_t *node, map_t *score_map)
 {
     if (node == NULL)
         return NULL;
@@ -412,8 +404,6 @@ int index_document(index_t *index, char *doc_name, list_t *terms)
 
 list_t *index_query(index_t *index, list_t *query_tokens, char *errbuf)
 {
-    printf("Starting index_query...\n");
-    print_list_of_strings("Query tokens", query_tokens);
 
     read_t *reader = reader_create(query_tokens);
     if (!reader)
@@ -422,7 +412,7 @@ list_t *index_query(index_t *index, list_t *query_tokens, char *errbuf)
         return NULL;
     }
 
-    ast_node_t *ast = handle_query(reader);
+    anode_t *ast = handle_query(reader);
     reader_destroy(reader);
 
     if (!ast)
